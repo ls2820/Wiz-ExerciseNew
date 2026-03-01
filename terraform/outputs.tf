@@ -1,22 +1,43 @@
-# Access the module outputs using: module.<module_name>.<output_name>
-
-output "STEP_1_SSH_TO_MONGODB" {
-  value = "ssh -i YOUR_KEY.pem ubuntu@${module.wiz_infrastructure.mongodb_public_ip}"
+# --- Networking Outputs ---
+output "vpc_id" {
+  value = aws_vpc.Wiz_Exercise_vpc.id
 }
 
-output "STEP_2_MONGODB_INTERNAL_URI" {
-  value     = "mongodb://admin:${var.db_password}@${module.wiz_infrastructure.mongodb_private_ip}:27017"
-  sensitive = true
+output "public_subnet_ids" {
+  value = aws_subnet.public[*].id
 }
 
-output "STEP_3_KUBECONFIG_COMMAND" {
-  value = "aws eks update-kubeconfig --region ${var.region} --name ${module.wiz_infrastructure.cluster_name}"
+# --- Database & Storage Outputs ---
+output "mongodb_public_ip" {
+  value       = aws_instance.mongodb_vm.public_ip
+  description = "Public IP of the MongoDB VM for SSH access"
 }
 
-# output "STEP_4_APP_URL" {
-#  value = "http://${module.wiz_infrastructure.load_balancer_hostname}"
-# }
-
-output "STEP_5_BACKUP_S3_BUCKET" {
-  value = "https://s3.console.aws.amazon.com/s3/buckets/${module.wiz_infrastructure.backup_bucket_name}"
+output "mongodb_private_ip" {
+  value       = aws_instance.mongodb_vm.private_ip
+  description = "Internal IP used by the Go App to connect to Mongo"
 }
+
+output "backup_bucket_name" {
+  value = aws_s3_bucket.backups.id
+}
+
+# --- EKS Cluster Outputs ---
+output "cluster_name" {
+  value = aws_eks_cluster.main.name
+}
+
+output "cluster_endpoint" {
+  value = aws_eks_cluster.main.endpoint
+}
+
+output "cluster_ca_certificate" {
+  value = aws_eks_cluster.main.certificate_authority[0].data
+}
+
+# --- Application Outputs ---
+/* output "load_balancer_hostname" {
+  value       = kubernetes_ingress_v1.tasky_ingress.status[0].load_balancer[0].ingress[0].hostname
+  description = "The public URL of your Tasky Go Application"
+}
+*/
