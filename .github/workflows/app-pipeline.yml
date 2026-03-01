@@ -19,15 +19,10 @@ jobs:
           docker build -t tasky-backend:${{ github.sha }} ./backend-app
 
       - name: Run Trivy Vulnerability Scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'tasky-backend:${{ github.sha }}'
-          format: 'table'
-          # We use exit-code 0 so the pipeline finishes even if it finds risks
-          exit-code: '0'
-          severity: 'CRITICAL,HIGH'
-          # This tells Trivy to scan the local image we just built
-          vuln-type: 'os,library'
+        run: |
+          # We run Trivy as a container to avoid the Git Fetch error
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --exit-code 0 --severity CRITICAL,HIGH tasky-backend:${{ github.sha }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
