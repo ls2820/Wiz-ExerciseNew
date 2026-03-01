@@ -3,7 +3,7 @@ name: "Build, Scan & Push App"
 on:
   push:
     branches: [ "main" ]
-    paths: [ "backend-app/**" ]
+  workflow_dispatch: # This lets you trigger it manually for testing
 
 jobs:
   build-and-scan:
@@ -14,15 +14,20 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker Image
-        run: docker build -t tasky-backend:latest ./backend-app
+        run: |
+          # Build the image inside the correct folder
+          docker build -t tasky-backend:${{ github.sha }} ./backend-app
 
       - name: Run Trivy Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'tasky-backend:latest'
+          image-ref: 'tasky-backend:${{ github.sha }}'
           format: 'table'
-          exit-code: '0' # Change to '1' if you want the pipeline to fail on vulnerabilities
+          # We use exit-code 0 so the pipeline finishes even if it finds risks
+          exit-code: '0'
           severity: 'CRITICAL,HIGH'
+          # This tells Trivy to scan the local image we just built
+          vuln-type: 'os,library'
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -40,5 +45,5 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: wiz-tasky-repo 
         run: |
-          docker tag tasky-backend:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker tag tasky-backend:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
