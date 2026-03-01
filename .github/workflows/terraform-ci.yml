@@ -39,7 +39,7 @@ jobs:
           TF_VAR_vpc_cidr: "10.0.0.0/16"
           TF_VAR_eks_cluster_name: "wiz-tasky-cluster"
           TF_VAR_cluster_version: "1.31"
-          TF_VAR_my_name: "ls2820-wiz-exercise"
+          TF_VAR_my_name: "Lorenzo Sibani"
           # List Variables (JSON format in single quotes)
           TF_VAR_public_subnet_cidr: '["10.0.1.0/24", "10.0.2.0/24"]'
           TF_VAR_private_subnet_cidr: '["10.0.10.0/24", "10.0.11.0/24"]'
