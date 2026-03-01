@@ -1,0 +1,7 @@
+.terraform/
+terraform/.terraform/
+*.tfstate
+*.tfstate.backup
+.DS_Store
+**/.DS_Store
+tfplan

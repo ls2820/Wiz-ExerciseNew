@@ -1,0 +1,40 @@
+name: "IaC Security Scan & Deploy"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ "terraform/**" ]
+  pull_request:
+    branches: [ "main" ]
+    paths: [ "terraform/**" ]
+
+jobs:
+  terraform-security-scan:
+    name: "Scan & Plan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          # We use soft_fail so the pipeline continues even if it finds your intentional vulnerabilities
+          soft_fail: true 
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: terraform plan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "us-east-1"

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiz-tasky-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tasky
+  template:
+    metadata:
+      labels:
+        app: tasky
+    spec:
+      imagePullSecrets:
+      - name: ecr-registry-key
+      containers:
+      - name: tasky-app
+        # REPLACE <YOUR_ACCOUNT_ID> with your actual AWS ID
+        image: 650251696449.dkr.ecr.us-east-1.amazonaws.com/wiz-tasky-repo:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: MONGODB_URI
+          # REPLACE with the MongoDB URI you got from Terraform output                                                                                                         
+          value: "mongodb://admin:SecurePassword12453@10.0.1.203:27017"
+---                                                                                
+apiVersion: v1
+kind: Service                
+metadata:            
+  name: tasky-service      
+spec:                                                                 
+  type: LoadBalancer                                                  
+  selector:   
+    app: tasky
+  ports:           
+    - protocol: TCP
+      port: 80                                                                                                                                                  
+      targetPort: 8080

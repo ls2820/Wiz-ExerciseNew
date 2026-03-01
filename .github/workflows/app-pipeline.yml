@@ -1,0 +1,44 @@
+name: "Build, Scan & Push App"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ "backend-app/**" ]
+
+jobs:
+  build-and-scan:
+    name: "Build & Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -t tasky-backend:latest ./backend-app
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'tasky-backend:latest'
+          format: 'table'
+          exit-code: '0' # Change to '1' if you want the pipeline to fail on vulnerabilities
+          severity: 'CRITICAL,HIGH'
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: wiz-tasky-repo 
+        run: |
+          docker tag tasky-backend:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
