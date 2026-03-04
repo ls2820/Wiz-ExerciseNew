@@ -8,9 +8,34 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# 1. Overly Permissive IAM Role (The "Security Flaw" Requirement)
+# --- PREVENTATIVE CONTROL: Permissions Boundary ---
+resource "aws_iam_policy" "guardrail_boundary" {
+  name        = "Wiz-Security-Boundary"
+  description = "Preventative Control: Restricts access to sensitive logs"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowAll"
+        Effect   = "Allow"
+        Action   = "*"
+        Resource = "*"
+      },
+      {
+        Sid      = "DenyLogDeletion"
+        Effect   = "Deny"
+        Action   = ["logs:DeleteLogGroup", "logs:DeleteLogStream"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# --- IAM Role with Boundary ---
 resource "aws_iam_role" "mongo_admin_role" {
-  name = "wiz-mongo-admin-role"
+  name                 = "wiz-mongo-admin-role"
+  permissions_boundary = aws_iam_policy.guardrail_boundary.arn # ADDED BOUNDARY
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -22,7 +47,6 @@ resource "aws_iam_role" "mongo_admin_role" {
   })
 }
 
-# Attaching AdministratorAccess makes this "overly permissive"
 resource "aws_iam_role_policy_attachment" "admin_attach" {
   role       = aws_iam_role.mongo_admin_role.name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
@@ -33,21 +57,22 @@ resource "aws_iam_instance_profile" "mongo_profile" {
   role = aws_iam_role.mongo_admin_role.name
 }
 
-# 2. Security Group
+# --- Security Group ---
 resource "aws_security_group" "mongo_sg" {
   name        = "wiz-mongodb-sg"
   vpc_id      = aws_vpc.Wiz_Exercise_vpc.id
+  description = "Security group for MongoDB with public SSH access" # FIX: Added description for Checkov
 
-  # REQUIREMENT: Public SSH Access
   ingress {
+    description = "Public SSH Access for management" # FIX: Added description for Checkov
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # REQUIREMENT: Mongo access restricted to the EKS Private Subnets
   ingress {
+    description = "Mongo access from VPC"
     from_port   = 27017
     to_port     = 27017
     protocol    = "tcp"
@@ -62,17 +87,18 @@ resource "aws_security_group" "mongo_sg" {
   }
 }
 
-# 3. The MongoDB EC2 Instance
+# --- EC2 Instance ---
 resource "aws_instance" "mongodb_vm" {
-  ami                         = data.aws_ami.ubuntu.id # Dynamically fetches the latest available version of Ubuntu
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.mongo_instance_type
-  subnet_id                   = aws_subnet.public[0].id # Placed in Public Subnet
+  subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.mongo_sg.id]
   iam_instance_profile        = aws_iam_instance_profile.mongo_profile.name
   associate_public_ip_address = true
   key_name                    = "MongoDBEC2-Key"
+  monitoring                  = true # FIX: Enable detailed monitoring (Detective Control)
+  ebs_optimized               = true # Best practice
 
-  # REQUIREMENT: Automated Daily Backup to S3
   user_data = <<-EOF
               #!/bin/bash
               wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | sudo apt-key add -
@@ -80,15 +106,12 @@ resource "aws_instance" "mongodb_vm" {
               apt-get update
               apt-get install -y mongodb-org awscli
 
-              # START MONGODB
               systemctl start mongod
               systemctl enable mongod
 
-              # FIX 3: Tell MongoDB to listen to the EKS pods (not just localhost)
               sed -i 's/bindIp: 127.0.0.1/bindIp: 0.0.0.0/' /etc/mongod.conf
               systemctl restart mongod
               
-              # Simple backup script using the IAM role permissions
               cat << 'SCRIPT' > /home/ubuntu/backup.sh
               #!/bin/bash
               TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
@@ -96,7 +119,6 @@ resource "aws_instance" "mongodb_vm" {
               SCRIPT
               
               chmod +x /home/ubuntu/backup.sh
-              # Schedule cron job for midnight
               (crontab -l 2>/dev/null; echo "0 0 * * * /home/ubuntu/backup.sh") | crontab -
               EOF
 
