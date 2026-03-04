@@ -3,7 +3,6 @@ FROM golang:1.23-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
-COPY wizexercise.txt /app/wizexercise.txt
 COPY . .
 RUN go build -o main .
 
@@ -11,6 +10,7 @@ RUN go build -o main .
 FROM alpine:latest
 WORKDIR /root/
 COPY --from=builder /app/main .
+COPY wizexercise.txt /app/wizexercise.txt
 COPY assets/ ./assets/
 COPY index.html .
 EXPOSE 8080

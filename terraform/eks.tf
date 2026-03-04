@@ -17,18 +17,36 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   role       = aws_iam_role.eks_cluster_role.name
 }
 
-# 2. The EKS Cluster
+# 2. The EKS Cluster (Hardened for 1.27 Compatibility)
 resource "aws_eks_cluster" "main" {
   name     = var.eks_cluster_name
   role_arn = aws_iam_role.eks_cluster_role.arn
+  version  = "1.29" 
+
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
-  version  = var.cluster_version
 
   vpc_config {
-    # We reference the subnets created in main.tf directly
     subnet_ids              = aws_subnet.private[*].id
     endpoint_private_access = true
     endpoint_public_access  = true
+  }
+
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
+  # THIS IS THE FINAL FIX: 
+  # We must explicitly define these as empty/disabled to stop 
+  # the 2026 provider from injecting Auto Mode defaults.
+  compute_config {
+    enabled = false
+  }
+
+  storage_config {
+    block_storage {
+      enabled = false
+    }
   }
 
   depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
@@ -48,7 +66,6 @@ resource "aws_iam_role" "eks_node_group_role" {
   })
 }
 
-# Policies required for Nodes to join the cluster and pull images
 resource "aws_iam_role_policy_attachment" "node_AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.eks_node_group_role.name
@@ -64,15 +81,13 @@ resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOn
   role       = aws_iam_role.eks_node_group_role.name
 }
 
-# 4. Managed Node Groups (using for_each to match your variables.tf)
+# 4. Managed Node Groups
 resource "aws_eks_node_group" "eks-worker-node" {
   for_each = var.node_groups
 
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = each.key
   node_role_arn   = aws_iam_role.eks_node_group_role.arn
-  
-  # Ensure nodes are deployed in private subnets as per security requirements
   subnet_ids      = aws_subnet.private[*].id
 
   instance_types = each.value.instance_types
@@ -89,4 +104,24 @@ resource "aws_eks_node_group" "eks-worker-node" {
     aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
   ]
+}
+
+# 5. ECR Repository
+resource "aws_ecr_repository" "wiz_repo" {
+  name = "wiz-tasky-repository"
+  # force_delete is excluded per your request
+}
+
+# 6. Docker Push (Local Exec)
+resource "null_resource" "docker_push" {
+  depends_on = [aws_ecr_repository.wiz_repo]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${aws_ecr_repository.wiz_repo.repository_url}
+      docker build --platform linux/amd64 -t tasky-app ../backend-app
+      docker tag tasky-app:latest ${aws_ecr_repository.wiz_repo.repository_url}:latest
+      docker push ${aws_ecr_repository.wiz_repo.repository_url}:latest
+    EOT
+  }
 }
